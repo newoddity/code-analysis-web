@@ -134,6 +134,7 @@
 
         // headshot URLs are scheme relative //
         // prepend http: to prevent invalid schemes like file:// or uri://
+
         const getImageUrl = (person) => {
             return `http:${person.headshot.url}`;
         };
@@ -141,6 +142,7 @@
         /**
          * Fisher-Yates shuffle
          */
+         /* TH: Great use of a shuffle with a "Big O" of N. This will always repeat itself for as many items in the array. */
         function shuffleList(list) {
             // Make a copy & don't mutate the passed in list
             let result = list.slice(1);
@@ -162,9 +164,14 @@
          * Remove any people that do not have the name we are
          * searching for.
          */
+         /* TH: This is a case sensitive whole-string match check. A user might be expecting partial matches that are not case sensitive */
         function filterByName(searchForName, personList) {
             return personList.filter((person) => {
-                return person.firstName === searchForName || person.lastName === searchForName;
+                let regex = new RegExp(searchForName, 'g');
+                let matches = `${person.firstName} ${person.lastName}`.match(regex);
+
+                return matches !== null;
+                /* return person.firstName === searchForName || person.lastName === searchForName; */
             });
         }
 
@@ -173,6 +180,8 @@
          * Takes in a property of an object list, e.g. "name" below
          *
          *    people = [{ name: 'Sam' }, { name: 'Jon' }, { name: 'Kevin' }]
+         *
+         * Takes in a boolean if the reults should be descending. [defaults to false]
          *
          * And returns a function that will sort that list, e.g.
          *
@@ -184,22 +193,33 @@
          *    console.log(sortedPeople)
          *    > [{ name: 'Jon' }, { name: 'Kevin' }, { name: 'Sam' }]
          *
+         * Or:
+         *
+         *    const sortPeopleByNameDesc = sortObjListByProp('name', true);
+         *    const sortedPeople = sortPeopleByNameDesc(people);
+         *
+         *  We now have:
+         *
+         *    console.log(sortedPeople)
+         *    > [{ name: 'Jon' }, { name: 'Kevin' }, { name: 'Sam' }]
+         *
          */
-        function sortObjListByProp(prop) {
+        function sortObjListByProp(prop, isDesc = false) {
             return function(objList) {
                 // Make a copy & don't mutate the passed in list
                 let result = objList.slice(1);
+                let direction = isDesc ? -1 : 1
 
                 result.sort((a, b) => {
                     if (a[prop] < b[prop]) {
-                        return -1;
+                        return -1 * direction;
                     }
 
                     if (a[prop] > b[prop]) {
-                        return 1;
+                        return 1 * direction;
                     }
-
-                    return 1;
+                    /* TH: It may not look like it makes a difference to swap equal values, but it is best practice to return 0 on equal values. Just in case this is extended in the future. */
+                    return 0;
                 });
 
                 return result;
@@ -207,9 +227,12 @@
         }
 
         const sortByFirstName = sortObjListByProp('firstName');
+        const sortByFirstNameDesc = sortObjListByProp('firstName', true);
 
-        const sortByLastName = (personList) => sortByFirstName(personList).reverse();
-
+        /* TH: This previously was swapping the sort order of the first names, but not sorting on the last names. Would be a nice feature to add to swap between ASC and DESC. */
+        /* TH + 30 minutes: I decided to crash course myself in React. This would be my initial attempt in swapping ASC/DESC order of these props.*/
+        const sortByLastName = sortObjListByProp('lastName');
+        const sortByLastNameDesc = sortObjListByProp('lastName', true);
 
         /*==================================================
 
@@ -247,7 +270,9 @@
             getInitialState() {
                 return {
                     personList: [],
-                    visiblePersonList: []
+                    visiblePersonList: [],
+                    sortByFirstOrder: '',
+                    sortByLastOrder: '',
                 };
             },
 
@@ -261,36 +286,61 @@
 
             _shuffleList() {
                 this.setState({
+                    sortByFirstOrder: '',
+                    sortByLastOrder: '',
                     visiblePersonList: shuffleList(this.state.personList)
                 });
             },
 
             _sortByFirst() {
-                this.setState({
-                    visiblePersonList: sortByFirstName(this.state.personList)
-                });
+                /* TH: This is my crazy logic to figure out what direction we are sorting. */
+                if(this.state.sortByFirstOrder === '' || this.state.sortByFirstOrder === 'DESC') {
+                    this.setState({
+                        sortByFirstOrder: 'ASC',
+                        sortByLastOrder: '',
+                        visiblePersonList: sortByFirstName(this.state.personList)
+                    });
+                } else {
+                    this.setState({
+                        sortByFirstOrder: 'DESC',
+                        sortByLastOrder: '',
+                        visiblePersonList: sortByFirstNameDesc(this.state.personList)
+                    });
+                }
             },
 
             _sortByLast() {
-                this.setState({
-                    visiblePersonList: sortByLastName(this.state.personList)
-                });
+                if(this.state.sortByLastOrder === '' || this.state.sortByLastOrder === 'DESC') {
+                    this.setState({
+                        sortByFirstOrder: '',
+                        sortByLastOrder: 'ASC',
+                        visiblePersonList: sortByLastName(this.state.personList)
+                    });
+                } else {
+                    this.setState({
+                        sortByFirstOrder: '',
+                        sortByLastOrder: 'DESC',
+                        visiblePersonList: sortByLastNameDesc(this.state.personList)
+                    });
+                }
             },
 
             _onSearch(e) {
                 this.setState({
+                    sortByFirstOrder: '',
+                    sortByLastOrder: '',
                     visiblePersonList: filterByName(e.target.value, this.state.personList)
                 });
             },
 
             render() {
-                const { visiblePersonList } = this.state;
+                const { visiblePersonList, sortByFirstOrder, sortByLastOrder } = this.state;
 
                 return React.DOM.div({ className: 'app-container' }, [
                     React.createElement(Search, { key: 'search', onChange: this._onSearch }),
                     React.DOM.button({ key: 'shuffle', onClick: this._shuffleList }, null, 'Shuffle'),
-                    React.DOM.button({ key: 'sort-first', onClick: this._sortByFirst }, null, 'Sort (First Name)'),
-                    React.DOM.button({ key: 'sort-last', onClick: this._sortByLast }, null, 'Sort (Last Name)'),
+                    React.DOM.button({ key: 'sort-first', onClick: this._sortByFirst }, null, `Sort (First Name) ${sortByFirstOrder}`),
+                    React.DOM.button({ key: 'sort-last', onClick: this._sortByLast }, null, `Sort (Last Name) ${sortByLastOrder}`),
                     React.createElement(ListContainer, { key: 'list', personList: visiblePersonList })
                 ]);
             }
